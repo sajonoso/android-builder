@@ -2,12 +2,13 @@
 
 // INFO
 // https://authmane512.medium.com/how-to-build-an-apk-from-command-line-without-ide-7260e1e22676
+// TODO: https://community.e.foundation/t/bacol-build-apks-from-the-command-line-aka-bacol/20891
 
 // Ensure the following variables meet your needs
 const ANDROID_SDK_PATH = process.env.ANDROID_SDK_ROOT;
 const BUILD_TOOLS_VERSION = '28.0.3'
-const PLATFORM_VERSION = '28'
-const MINIMUM_SDK_VERSION = '10'
+const TARGET_SDK_VERSION = '28'
+const MIN_SDK_VERSION = '10'
 
 
 const fs = require('fs')
@@ -33,14 +34,19 @@ const DX_PRG = ANDROID_SDK_PATH + '/build-tools/' + BUILD_TOOLS_VERSION + '/d8' 
 const ZIPALIGN_PRG = ANDROID_SDK_PATH + '/build-tools/' + BUILD_TOOLS_VERSION + '/zipalign'
 const APKSIGNER_PRG = ANDROID_SDK_PATH + '/build-tools/' + BUILD_TOOLS_VERSION + '/apksigner'
 const BUILD_TOOLS_PATH = ANDROID_SDK_PATH + '/build-tools/' + BUILD_TOOLS_VERSION
-const PLATFORM_PATH = ANDROID_SDK_PATH + '/platforms/android-' + PLATFORM_VERSION
+const PLATFORM_PATH = ANDROID_SDK_PATH + '/platforms/android-$TARGET_SDK_VERSION'
 const PLATFORM_LIB = PLATFORM_PATH + '/android.jar'
+const LAYOUT_LIB = PLATFORM_PATH + '/data/layoutlib.jar'
 
-const ANDROID_SUPPORT_DESIGN_LIB = ANDROID_SDK_PATH + '/extras/support/design/libs/android-support-design.jar'
-const ANDROID_SUPPORT_LIB_V4 = ANDROID_SDK_PATH + '/extras/support/v7/appcompat/libs/android-support-v4.jar'
-const ANDROID_SUPPORT_LIB_V7 = ANDROID_SDK_PATH + '/extras/support/v7/appcompat/libs/android-support-v7-appcompat.jar'
-const ANDROID_SUPPORT_LIB_V7_RECYCLER = ANDROID_SDK_PATH + '/extras/support/v7/recyclerview/libs/android-support-v7-recyclerview.jar'
+const STANDARD_LIBS = [PLATFORM_LIB, LAYOUT_LIB]
+
+// const ANDROID_SUPPORT_DESIGN_LIB = ANDROID_SDK_PATH + '/extras/support/design/libs/android-support-design.jar'
+// const ANDROID_SUPPORT_LIB_V4 = ANDROID_SDK_PATH + '/extras/support/v7/appcompat/libs/android-support-v4.jar'
+// const ANDROID_SUPPORT_LIB_V7 = ANDROID_SDK_PATH + '/extras/support/v7/appcompat/libs/android-support-v7-appcompat.jar'
+// const ANDROID_SUPPORT_LIB_V7_RECYCLER = ANDROID_SDK_PATH + '/extras/support/v7/recyclerview/libs/android-support-v7-recyclerview.jar'
 const ANDROID_SUPPORT_LIB_V13 = ANDROID_SDK_PATH + '/extras/support/v13/android-support-v13.jar'
+
+const SUPPORT_LIBS = [ANDROID_SUPPORT_LIB_V13]
 
 // command options
 const MANIFEST_FILE = '/AndroidManifest.xml'
@@ -50,41 +56,17 @@ const KEYGEN_DEBUG_OPTIONS = ' -genkey -noprompt -v -keystore ' + DEBUG_KEYSTORE
   ' -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000' +
   ' -dname "CN=Android Debug,O=Android,C=US"'
 
-const AAPT_GEN_SUPPORTLIB = '-I ' + ANDROID_SUPPORT_LIB_V13 +
-  ' -I ' + ANDROID_SUPPORT_DESIGN_LIB +
-  ' -I ' + ANDROID_SUPPORT_LIB_V7 +
-  ' -I ' + ANDROID_SUPPORT_LIB_V7_RECYCLER;
 
-const AAPT_GEN_R_OPTIONS =
-  ' package -f -m -J $PROJ/src -M $PROJ/AndroidManifest.xml -S $PROJ/res -I $PLATFORM_LIB $SUPPORT_LIB'
+const AAPT_GEN_R_OPTIONS = ` package -f -m -M $PROJ/AndroidManifest.xml -S $PROJ/res -I $AAPT_LIBS -J $PROJ/src`
 
-const AIDL_OPTIONS = ' -p$PLATFORM_PATH/framework.aidl -o$PROJ/' + BUILD_FOLDER + '/aidl $AIDL_FILES';
+const AIDL_OPTIONS = ` -p$PLATFORM_PATH/framework.aidl -o$PROJ/${BUILD_FOLDER}/aidl $AIDL_FILES`;
 
-const JAVAC_SUPPORTLIB = ' -cp ' + ANDROID_SUPPORT_LIB_V4 +
-  ' -cp ' + ANDROID_SUPPORT_DESIGN_LIB +
-  ' -cp ' + ANDROID_SUPPORT_LIB_V7_RECYCLER +
-  ' -cp ' + ANDROID_SUPPORT_LIB_V7 +
-  ' -cp ' + ANDROID_SUPPORT_LIB_V13;
+const JAVAC_OPTIONS = ` -d $PROJ/${BUILD_FOLDER} $JAVAC_LIBS -source 1.8 -target 1.8 -sourcepath ./src $SOURCE_JAVA`
 
-const JAVAC_OPTIONS = (
-  ' -d $PROJ/' + BUILD_FOLDER + 
-  (isWindows ? ' -bootclasspath $PLATFORM_LIB -cp src/* -cp $PLATFORM_PATH/* -cp $BUILD_TOOLS_PATH/*' : 
-    ' -classpath $PLATFORM_LIB:src/*:$PLATFORM_PATH/*:$BUILD_TOOLS_PATH/*') +
-  '$SUPPORT_LIB' +
-  ' -source 1.8 -target 1.8') // $SOURCE_JAVA
-  .replace(/\$PLATFORM_PATH/g, PLATFORM_PATH)
-  .replace(/\$BUILD_TOOLS_PATH/g, BUILD_TOOLS_PATH)
-  .replace(/\$PROJ/g, '.')
-  .replace('$PLATFORM_LIB', PLATFORM_LIB)
-
-const DX_OPTIONS = (' --min-api ' + MINIMUM_SDK_VERSION + ' --lib $PLATFORM_LIB' +
-  //  ' $SUPPORT_LIB' +
-  ' --output $PROJ/' + BUILD_FOLDER + '/ ')
-  .replace('$PLATFORM_LIB', PLATFORM_LIB)
+const D8_OPTIONS = ` --min-api $MIN_SDK_VERSION --lib $DX_ANDROID_LIB --output $PROJ/${BUILD_FOLDER}/ ./${BUILD_FOLDER}/classes.jar`
 
 const AAPT_GEN_APK_OPTIONS1 =
-  ' package -f -m -F $PROJ/' + BUILD_FOLDER +
-  '/unaligned.apk -M $PROJ/AndroidManifest.xml -S $PROJ/res -I $PLATFORM_LIB'
+  ` package -f -m -M $PROJ/AndroidManifest.xml -S $PROJ/res -I $AAPT_LIBS -F $PROJ/${BUILD_FOLDER}/unaligned.apk`
 
 const AAPT_GEN_APK_OPTIONS2 = ' add unaligned.apk classes.dex'
 
@@ -253,13 +235,14 @@ function createDebugKeyStore(fs, execSync, options) {
 // ***START COMPILE FUNCTIONS
 
 function generateRJava(execSync, options) {
-  const appName = options.appName
-  const appPackageName = options.appPackageName
+  const AAPT_LIBS = PLATFORM_LIB
 
   const aapt_options = AAPT_GEN_R_OPTIONS
+    .replace('$AAPT_LIBS', AAPT_LIBS)
     .replace(/\$PROJ/g, '.')
     .replace('$PLATFORM_LIB', PLATFORM_LIB)
-    .replace('$SUPPORT_LIB', options.supportLib ? AAPT_GEN_SUPPORTLIB : '')
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget)
+
   const cmd = AAPT_PRG + aapt_options
 
   return showRun(execSync, cmd)
@@ -269,6 +252,7 @@ function compileAidl(execSync, options, aidlFileName) {
   const aidl_options = AIDL_OPTIONS
     .replace(/\$PROJ/g, '.')
     .replace('$PLATFORM_PATH', PLATFORM_PATH)
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget)
     .replace('$AIDL_FILES', aidlFileName)
 
   const cmd = AIDL_PRG + aidl_options
@@ -309,8 +293,18 @@ function directoryList(path, ext, files) {
 
 
 function compileFile(execSync, options, fileName) {
-  const javac_option_common = JAVAC_OPTIONS.replace('$SUPPORT_LIB', options.supportLib ? JAVAC_SUPPORTLIB : '')
-  const javac_option1 = javac_option_common + ' -sourcepath ./src $SOURCE_JAVA'.replace('$SOURCE_JAVA', fileName);
+  const JAVAC_LIBS_LIST = options.supportLib ? STANDARD_LIBS.concat(SUPPORT_LIBS) : STANDARD_LIBS
+  const JAVAC_LIBS = isWindows ? `-cp "${JAVAC_LIBS_LIST.join(';')}"` : `--classpath ${JAVAC_LIBS_LIST.join(':')}`
+
+  const javac_option1 = JAVAC_OPTIONS
+    .replace(/\$PROJ/g, '.')
+    .replace('$JAVAC_LIBS', JAVAC_LIBS)
+    // .replace(/\$PLATFORM_PATH/g, PLATFORM_PATH)
+    // .replace(/\$BUILD_TOOLS_PATH/g, BUILD_TOOLS_PATH)
+    // .replace('$PLATFORM_LIB', PLATFORM_LIB)
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget)
+    .replace('$SOURCE_JAVA', fileName);
+
   const cmd = JAVAC_PRG + javac_option1
 
   return showRun(execSync, cmd)
@@ -331,24 +325,35 @@ function compileSource(fs, execSync, options) {
 }
 
 function javaToDalvikByteCode(execSync, options) {
-  let dx_options = DX_OPTIONS.replace(/\$PROJ/g, '.')
-    .replace('$SUPPORT_LIB', options.supportLib ? ' ' + ANDROID_SUPPORT_LIB_V13 : '');
+  const DX_ANDROID_LIB = `${PLATFORM_LIB}`
+  const dx_options = D8_OPTIONS.replace(/\$PROJ/g, '.')
+    .replace('$MIN_SDK_VERSION', options.sdkmin)
+    .replace('$DX_ANDROID_LIB', DX_ANDROID_LIB)
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget);
 
-  dx_options += ' ./' + BUILD_FOLDER + '/classes.jar'
   const cmd = DX_PRG + dx_options
   showRun(execSync, cmd)
 }
 
 function buildApk(execSync, options) {
-  const aapt_options1 = AAPT_GEN_APK_OPTIONS1.replace(/\$PROJ/g, '.')
+  const AAPT_LIBS = PLATFORM_LIB
+
+  const aapt_options1 = AAPT_GEN_APK_OPTIONS1
+    .replace(/\$PROJ/g, '.')
+    .replace('$AAPT_LIBS', AAPT_LIBS)
     .replace('$PLATFORM_LIB', PLATFORM_LIB)
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget);
+
   const cmd1 = AAPT_PRG + aapt_options1
 
   var result = showRun(execSync, cmd1)
 
   // AAPT tool is sensitve to relative paths so move into build folder before running aapt add command
   process.chdir('./' + BUILD_FOLDER)
-  const aapt_options2 = AAPT_GEN_APK_OPTIONS2.replace(/\$PROJ/g, '.')
+  const aapt_options2 = AAPT_GEN_APK_OPTIONS2
+    .replace(/\$PROJ/g, '.')
+    .replace(/\$TARGET_SDK_VERSION/g, options.sdktarget)
+
   const cmd2 = AAPT_PRG + aapt_options2
   result = showRun(execSync, cmd2)
   process.chdir('../')
@@ -428,6 +433,8 @@ function getCompileOptions(fs, path) {
   const userOptions = {}
   userOptions.appName = path.basename(process.cwd())
   userOptions.appPackageName = getPackageNameFromManifest()
+  userOptions.sdkmin = MIN_SDK_VERSION
+  userOptions.sdktarget = TARGET_SDK_VERSION
 
   return userOptions
 }
@@ -448,7 +455,6 @@ function processOptions(fs, path) {
       break;
     case 'compile':
       userOptions = getCompileOptions(fs, path)
-      if (optsLength === 4) userOptions.addSupportLib = process.argv[3] === 'support';
       break;
     case 'clean':
       break;
@@ -471,9 +477,12 @@ function processOptions(fs, path) {
     if (index < 3) return;
 
     const optLength = opt.length
-    if (optLength >= 2 && opt.slice(0, 1) === '-') {
+
+    const keyend = opt.indexOf('=')
+
+    if (optLength >= 2) {
       // simple options without parameters
-      if (optLength === 2) {
+      if (optLength === 2 && keyend < 0) {
         switch (opt) {
           case '-s':
             userOptions.supportLib = true;
@@ -481,19 +490,25 @@ function processOptions(fs, path) {
           case '-c':
             userOptions.cleanBuild = true;
             break;
-          case '-z':
           default:
             errorInvalidOption(opt);
         }
-      } else if (optLength >= 4 && opt.slice(2, 3) === '=') {
-        const optValue = opt.slice(3)
-        const optKey = opt.slice(0, 2)
+      } else if (optLength >= 4 && keyend > 0) {
+        const optValue = opt.slice(keyend + 1)
+        const optKey = opt.slice(0, keyend)
+
         switch (optKey) {
           case '-p':
             userOptions.appPackageName = optValue
             break;
           case '-n':
             userOptions.appName = optValue
+            break;
+          case '-sdkmin':
+            userOptions.sdkmin = optValue
+            break;
+          case '-sdktarget':
+            userOptions.sdktarget = optValue
             break;
           default:
             errorInvalidOption(opt)
